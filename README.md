@@ -1,5 +1,4 @@
-# Dual-size Customer Support Bot 🛫: **Let a 1.7B model handle support, and escalate only the hard turns**
-
+# Flexible Customer Support Bot 🛫
 *A fine-tuned small language model that resolves most airline customer-support turns itself and **defers genuinely-hard turns to a larger model** — a cascade that keeps the big model (and its cost) for the cases that actually need it.*
 
 You're building a customer-support assistant. A frontier LLM handles every conversation well — but you're paying frontier prices for "look up my reservation" and "what's my baggage allowance," which are the overwhelming majority of turns. The hard turns — refund eligibility under fare rules, compensation math across passengers, multi-constraint rebooking — are a small minority, but they're the ones where a small model quietly gets it *wrong*.
