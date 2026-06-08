@@ -1,0 +1,554 @@
+{
+  "task_description": "# Airline Agent Policy\nThe current time is 2024-05-15 15:00:00 EST.\n\nAs an airline agent, you can help users book, modify, or cancel flight reservations.\n- Before taking any actions that update the booking database (booking, modifying flights, editing baggage, upgrading cabin class, or updating passenger information), you must list the action details and obtain explicit user confirmation (yes) to proceed.\n- You should not provide any information, knowledge, or procedures not provided by the user or available tools, or give subjective recommendations or comments.\n- You should only make one tool call at a time, and if you make a tool call, you should not respond to the user simultaneously. If you respond to the user, you should not make a tool call at the same time.\n- You should deny user requests that are against this policy.\n- You should transfer the user to a human agent if and only if the request cannot be handled within the scope of your actions.\n\n## Domain Basic\n- Each user has a profile containing user id, email, addresses, date of birth, payment methods, reservation numbers, and membership tier.\n- Each reservation has an reservation id, user id, trip type (one way, round trip), flights, passengers, payment methods, created time, baggages, and travel insurance information.\n- Each flight has a flight number, an origin, destination, scheduled departure and arrival time (local time), and for each date:\n    - If the status is \"available\", the flight has not taken off, available seats and prices are listed.\n    - If the status is \"delayed\" or \"on time\", the flight has not taken off, cannot be booked.\n    - If the status is \"flying\", the flight has taken off but not landed, cannot be booked.\n\n## Book flight\n- The agent must first obtain the user id, then ask for the trip type, origin, destination.\n- Passengers: Each reservation can have at most five passengers. The agent needs to collect the first name, last name, and date of birth for each passenger. All passengers must fly the same flights in the same cabin.\n- Payment: each reservation can use at most one travel certificate, at most one credit card, and at most three gift cards. The remaining amount of a travel certificate is not refundable. All payment methods must already be in user profile for safety reasons.\n- Checked bag allowance: If the booking user is a regular member, 0 free checked bag for each basic economy passenger, 1 free checked bag for each economy passenger, and 2 free checked bags for each business passenger. If the booking user is a silver member, 1 free checked bag for each basic economy passenger, 2 free checked bag for each economy passenger, and 3 free checked bags for each business passenger. If the booking user is a gold member, 2 free checked bag for each basic economy passenger, 3 free checked bag for each economy passenger, and 3 free checked bags for each business passenger. Each extra baggage is 50 dollars.\n- Travel insurance: the agent should ask if the user wants to buy the travel insurance, which is 30 dollars per passenger and enables full refund if the user needs to cancel the flight given health or weather reasons.\n\n## Modify flight\n- The agent must first obtain the user id and the reservation id.\n- Change flights: Basic economy flights cannot be modified. Other reservations can be modified without changing the origin, destination, and trip type. Some flight segments can be kept, but their prices will not be updated based on the current price. The API does not check these for the agent, so the agent must make sure the rules apply before calling the API!\n- Change cabin: all reservations, including basic economy, can change cabin without changing the flights. Cabin changes require the user to pay for the difference between their current cabin and the new cabin class. Cabin class must be the same across all the flights in the same reservation; changing cabin for just one flight segment is not possible.\n- Change baggage and insurance: The user can add but not remove checked bags. The user cannot add insurance after initial booking.\n- Change passengers: The user can modify passengers but cannot modify the number of passengers. This is something that even a human agent cannot assist with.\n- Payment: If the flights are changed, the user needs to provide one gift card or credit card for payment or refund method. The agent should ask for the payment or refund method instead.\n\n## Cancel flight\n- The agent must first obtain the user id, the reservation id, and the reason for cancellation (change of plan, airline cancelled flight, or other reasons)\n- All reservations can be cancelled within 24 hours of booking, or if the airline cancelled the flight. Otherwise, basic economy or economy flights can be cancelled only if travel insurance is bought and the condition is met, and business flights can always be cancelled. The rules are strict regardless of the membership status. The API does not check these for the agent, so the agent must make sure the rules apply before calling the API!\n- The agent can only cancel the whole trip that is not flown. If any of the segments are already used, the agent cannot help and transfer is needed.\n- The refund will go to original payment methods in 5 to 7 business days.\n\n## Refund\n- If the user is silver/gold member or has travel insurance or flies business, and complains about cancelled flights in a reservation, the agent can offer a certificate as a gesture after confirming the facts, with the amount being $100 times the number of passengers.\n- If the user is silver/gold member or has travel insurance or flies business, and complains about delayed flights in a reservation and wants to change or cancel the reservation, the agent can offer a certificate as a gesture after confirming the facts and changing or cancelling the reservation, with the amount being $50 times the number of passengers.\n- Do not proactively offer these unless the user complains about the situation and explicitly asks for some compensation. Do not compensate if the user is regular member and has no travel insurance and flies (basic) economy.\n\n\n\n# Escalation: defer complex turns to a more capable model\nCall `defer_to_larger_model` on turns that are NOT a single, direct, obviously-correct step, so\nthat a more capable model continues this same conversation with the same tools and policy. Judge\ncomplexity in ABSOLUTE terms, by the reasoning the correct action depends on — not relative to\nyour own ability, and never merely because a particular tool (a write, a calculation, a sensitive\naction) is requested.\nA turn is complex — defer it — when producing the correct action requires any of:\n- Verifying policy eligibility before acting, where the answer is not immediately obvious — e.g.\n  whether a reservation can be modified or cancelled given basic-economy limits, travel insurance,\n  membership tier, or partially-flown segments; or whether a user qualifies for compensation.\n- Combining several rules or several pieces of information to decide what to do.\n- A multi-step calculation whose result determines the action (fare differences, refund or\n  compensation amounts, especially across multiple passengers).\n- Resolving a genuinely ambiguous eligibility or policy question, or a judgement call about\n  whether to refuse.\nA turn is simple — do it yourself — when the correct action follows directly from the request and\nthe information already on hand, with no policy precondition to weigh: looking up a reservation or\nuser, searching flights, listing airports, asking for missing information, summarising or\nconfirming retrieved information, or a single unconditional action.\nThis is different from transfer_to_human_agents: deferring keeps the request automated (a more\ncapable model takes over); transferring to a human is only for requests outside the scope of\nthese tools, or when the user explicitly asks for a human.\n",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "book_reservation",
+        "description": "Book a reservation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "user_id": {
+              "type": "string",
+              "description": "The ID of the user to book the reservation, such as 'sara_doe_496'."
+            },
+            "origin": {
+              "type": "string",
+              "description": "The IATA code for the origin city, such as 'SFO'."
+            },
+            "destination": {
+              "type": "string",
+              "description": "The IATA code for the destination city, such as 'JFK'."
+            },
+            "flight_type": {
+              "type": "string",
+              "enum": [
+                "one_way",
+                "round_trip"
+              ]
+            },
+            "cabin": {
+              "type": "string",
+              "enum": [
+                "basic_economy",
+                "economy",
+                "business"
+              ]
+            },
+            "flights": {
+              "type": "array",
+              "description": "An array of objects containing details about each piece of flight.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "flight_number": {
+                    "type": "string",
+                    "description": "Flight number, such as 'HAT001'."
+                  },
+                  "date": {
+                    "type": "string",
+                    "description": "The date for the flight in the format 'YYYY-MM-DD', such as '2024-05-01'."
+                  }
+                },
+                "required": [
+                  "flight_number",
+                  "date"
+                ]
+              }
+            },
+            "passengers": {
+              "type": "array",
+              "description": "An array of objects containing details about each passenger.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "first_name": {
+                    "type": "string",
+                    "description": "The first name of the passenger, such as 'Noah'."
+                  },
+                  "last_name": {
+                    "type": "string",
+                    "description": "The last name of the passenger, such as 'Brown'."
+                  },
+                  "dob": {
+                    "type": "string",
+                    "description": "The date of birth of the passenger in the format 'YYYY-MM-DD', such as '1990-01-01'."
+                  }
+                },
+                "required": [
+                  "first_name",
+                  "last_name",
+                  "dob"
+                ]
+              }
+            },
+            "payment_methods": {
+              "type": "array",
+              "description": "An array of objects containing details about each payment method.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "payment_id": {
+                    "type": "string",
+                    "description": "The payment id stored in user profile, such as 'credit_card_7815826', 'gift_card_7815826', 'certificate_7815826'."
+                  },
+                  "amount": {
+                    "type": "number",
+                    "description": "The amount to be paid."
+                  }
+                },
+                "required": [
+                  "payment_id",
+                  "amount"
+                ]
+              }
+            },
+            "total_baggages": {
+              "type": "integer",
+              "description": "The total number of baggage items included in the reservation."
+            },
+            "nonfree_baggages": {
+              "type": "integer",
+              "description": "The number of non-free baggage items included in the reservation."
+            },
+            "insurance": {
+              "type": "string",
+              "enum": [
+                "yes",
+                "no"
+              ]
+            }
+          },
+          "required": [
+            "user_id",
+            "origin",
+            "destination",
+            "flight_type",
+            "cabin",
+            "flights",
+            "passengers",
+            "payment_methods",
+            "total_baggages",
+            "nonfree_baggages",
+            "insurance"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "calculate",
+        "description": "Calculate the result of a mathematical expression.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "expression": {
+              "type": "string",
+              "description": "The mathematical expression to calculate, such as '2 + 2'. The expression can contain numbers, operators (+, -, *, /), parentheses, and spaces."
+            }
+          },
+          "required": [
+            "expression"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "cancel_reservation",
+        "description": "Cancel the whole reservation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reservation_id": {
+              "type": "string",
+              "description": "The reservation ID, such as 'ZFA04Y'."
+            }
+          },
+          "required": [
+            "reservation_id"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_reservation_details",
+        "description": "Get the details of a reservation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reservation_id": {
+              "type": "string",
+              "description": "The reservation id, such as '8JX2WO'."
+            }
+          },
+          "required": [
+            "reservation_id"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_user_details",
+        "description": "Get the details of an user.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "user_id": {
+              "type": "string",
+              "description": "The user id, such as 'sara_doe_496'."
+            }
+          },
+          "required": [
+            "user_id"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "list_all_airports",
+        "description": "List all airports and their cities.",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "search_direct_flight",
+        "description": "Search direct flights between two cities on a specific date.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "origin": {
+              "type": "string",
+              "description": "The origin city airport in three letters, such as 'JFK'."
+            },
+            "destination": {
+              "type": "string",
+              "description": "The destination city airport in three letters, such as 'LAX'."
+            },
+            "date": {
+              "type": "string",
+              "description": "The date of the flight in the format 'YYYY-MM-DD', such as '2024-01-01'."
+            }
+          },
+          "required": [
+            "origin",
+            "destination",
+            "date"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "search_onestop_flight",
+        "description": "Search direct flights between two cities on a specific date.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "origin": {
+              "type": "string",
+              "description": "The origin city airport in three letters, such as 'JFK'."
+            },
+            "destination": {
+              "type": "string",
+              "description": "The destination city airport in three letters, such as 'LAX'."
+            },
+            "date": {
+              "type": "string",
+              "description": "The date of the flight in the format 'YYYY-MM-DD', such as '2024-05-01'."
+            }
+          },
+          "required": [
+            "origin",
+            "destination",
+            "date"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "send_certificate",
+        "description": "Send a certificate to a user. Be careful!",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "user_id": {
+              "type": "string",
+              "description": "The ID of the user to book the reservation, such as 'sara_doe_496'."
+            },
+            "amount": {
+              "type": "number",
+              "description": "Certificate amount to send."
+            }
+          },
+          "required": [
+            "user_id",
+            "amount"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "think",
+        "description": "Use this tool to think and perform reasoning before calling an API. It will not obtain new information or change the database, but just append the thought to the log.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "thought": {
+              "type": "string",
+              "description": "The step by step thought process."
+            }
+          },
+          "required": [
+            "thought"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "transfer_to_human_agents",
+        "description": "Transfer the user to a human agent, with a summary of the user's issue. Use this only when the request is outside the scope of the available tools, or the user explicitly asks for a human agent — NOT for requests that are merely complex (use defer_to_larger_model for those).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string",
+              "description": "A summary of the user's issue."
+            }
+          },
+          "required": [
+            "summary"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "update_reservation_baggages",
+        "description": "Update the baggage information of a reservation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reservation_id": {
+              "type": "string",
+              "description": "The reservation ID, such as 'ZFA04Y'."
+            },
+            "total_baggages": {
+              "type": "integer",
+              "description": "The updated total number of baggage items included in the reservation."
+            },
+            "nonfree_baggages": {
+              "type": "integer",
+              "description": "The updated number of non-free baggage items included in the reservation."
+            },
+            "payment_id": {
+              "type": "string",
+              "description": "The payment id stored in user profile, such as 'credit_card_7815826', 'gift_card_7815826', 'certificate_7815826'."
+            }
+          },
+          "required": [
+            "reservation_id",
+            "total_baggages",
+            "nonfree_baggages",
+            "payment_id"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "update_reservation_flights",
+        "description": "Update the flight information of a reservation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reservation_id": {
+              "type": "string",
+              "description": "The reservation ID, such as 'ZFA04Y'."
+            },
+            "cabin": {
+              "type": "string",
+              "enum": [
+                "basic_economy",
+                "economy",
+                "business"
+              ]
+            },
+            "flights": {
+              "type": "array",
+              "description": "An array of objects containing details about each piece of flight in the ENTIRE new reservation. Even if the a flight segment is not changed, it should still be included in the array.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "flight_number": {
+                    "type": "string",
+                    "description": "Flight number, such as 'HAT001'."
+                  },
+                  "date": {
+                    "type": "string",
+                    "description": "The date for the flight in the format 'YYYY-MM-DD', such as '2024-05-01'."
+                  }
+                },
+                "required": [
+                  "flight_number",
+                  "date"
+                ]
+              }
+            },
+            "payment_id": {
+              "type": "string",
+              "description": "The payment id stored in user profile, such as 'credit_card_7815826', 'gift_card_7815826', 'certificate_7815826'."
+            }
+          },
+          "required": [
+            "reservation_id",
+            "cabin",
+            "flights",
+            "payment_id"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "update_reservation_passengers",
+        "description": "Update the passenger information of a reservation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reservation_id": {
+              "type": "string",
+              "description": "The reservation ID, such as 'ZFA04Y'."
+            },
+            "passengers": {
+              "type": "array",
+              "description": "An array of objects containing details about each passenger.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "first_name": {
+                    "type": "string",
+                    "description": "The first name of the passenger, such as 'Noah'."
+                  },
+                  "last_name": {
+                    "type": "string",
+                    "description": "The last name of the passenger, such as 'Brown'."
+                  },
+                  "dob": {
+                    "type": "string",
+                    "description": "The date of birth of the passenger in the format 'YYYY-MM-DD', such as '1990-01-01'."
+                  }
+                },
+                "required": [
+                  "first_name",
+                  "last_name",
+                  "dob"
+                ]
+              }
+            }
+          },
+          "required": [
+            "reservation_id",
+            "passengers"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "respond_to_user",
+        "description": "Send a natural-language message to the user. This is the only way to communicate with the user. It ends your turn and returns control to the user, so do not make any other tool call in the same turn.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string",
+              "description": "The message to send to the user."
+            }
+          },
+          "required": [
+            "message"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "defer_to_larger_model",
+        "description": "Escalate the current turn to a larger, more capable model that continues this conversation using the same tools and policy. Use it on turns that are not a single, direct, obviously-correct step — where the correct action depends on verifying non-obvious policy eligibility, combining several rules or pieces of information, a multi-step calculation, or resolving an ambiguous eligibility/policy question. Judge complexity by the structure of the problem in absolute terms, not relative to model capability, and do not defer merely because a write, calculation, or sensitive tool is requested. The user keeps being served automatically; this is a capability escalation, NOT a human hand-off (use transfer_to_human_agents for out-of-scope requests or explicit human requests).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string",
+              "description": "The specific difficulty that makes this turn unsafe to handle yourself (e.g. 'compensation eligibility + amount across 3 passengers')."
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "additionalProperties": null
+        },
+        "strict": null
+      }
+    }
+  ],
+  "llm_as_a_judge_instructions": null
+}
