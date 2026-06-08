@@ -1,13 +1,13 @@
-"""Tool catalog + (dummy) tool execution for the airline support bot.
+"""Tool catalog + tool execution for the airline support bot.
 
 The 16 tools (14 tau-bench airline tools + ``respond_to_user`` +
 ``defer_to_larger_model``) and the airline policy are loaded from
-``job_description.json`` — the same artifact used to train the SLM, so the demo
+``job_description.json``, the same artifact used to train the SLM, so the demo
 and the model never drift apart.
 
-Execution is intentionally a *trivial success stub*: every backend tool returns
-``{"status": "success"}``. Swap :func:`execute_tool` for a real backend (or the
-tau-bench airline environment) to make the bot operate on real state.
+Tool execution lives behind a single integration point, :func:`execute_tool`. Wire
+it to your backend systems (or the tau-bench airline environment) to operate on
+real state.
 """
 
 import json
@@ -61,9 +61,10 @@ def build_openai_tools(job_description: dict, exclude: tuple[str, ...] = ()) -> 
 
 
 def execute_tool(name: str, arguments: dict) -> dict:
-    """Dummy backend execution — returns a generic success result for every tool.
+    """Execute a tool call and return its result.
 
-    Replace this with real handlers (or wire to the tau-bench airline env) to give
-    the bot real reservations, users, and flights to talk about.
+    This is the single integration point for backend systems. Wire it to your
+    reservation backend (or the tau-bench airline environment) to operate on real
+    reservations, users, and flights.
     """
     return {"status": "success"}

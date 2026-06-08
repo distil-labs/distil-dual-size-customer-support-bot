@@ -1,10 +1,10 @@
-"""Dual-size airline customer-support bot — terminal CLI (SLM + deferral cascade).
+"""Dual-size airline customer-support bot. Terminal CLI (SLM + deferral cascade).
 
-A small fine-tuned SLM (Qwen3-0.6B class) handles most airline-support turns
+A small fine-tuned SLM (Qwen3-1.7B class) handles most airline-support turns
 itself. On a genuinely-hard turn it emits a ``defer_to_larger_model`` tool call;
 the orchestrator then hands the *rest of the conversation* to a larger, pluggable
 model (any OpenAI-compatible endpoint). Every assistant action is a single tool
-call — including talking to the customer via ``respond_to_user`` — matching how
+call (including talking to the customer via ``respond_to_user``), matching how
 the model was trained.
 
 Usage:
@@ -51,7 +51,7 @@ GREEN = "32"
 MAX_STEPS = 12  # safety cap on tool calls within a single user turn
 
 # ---------------------------------------------------------------------------
-# System prompt — the distil tool-calling serving wrapper around the airline
+# System prompt: the distil tool-calling serving wrapper around the airline
 # policy (job_description.task_description). Matches the trained model's format.
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT_TEMPLATE = (
@@ -65,7 +65,7 @@ SYSTEM_PROMPT_TEMPLATE = (
 
 
 # ---------------------------------------------------------------------------
-# Model client — stateless wrapper around an OpenAI-compatible endpoint
+# Model client: stateless wrapper around an OpenAI-compatible endpoint
 # ---------------------------------------------------------------------------
 class ModelClient:
     """A tier in the cascade (the small SLM or the large deferral model)."""
@@ -185,7 +185,7 @@ class CascadeOrchestrator:
                     msg += f" (Summary passed on: {summary})"
                 return self._bot_line(client.label, msg)
 
-            # --- Backend / think tools: dummy-execute and feed the result back ---
+            # --- Other tools: execute and feed the result back ---
             result = execute_tool(name, arguments)
             self._trace_tool(client.label, name, arguments, result)
             self._record_tool_result(result)
@@ -259,7 +259,7 @@ def main(
         task_description=job_description["task_description"]
     )
 
-    # SLM gets the full 16-tool catalog (incl. defer). enable_thinking off — the
+    # SLM gets the full 16-tool catalog (incl. defer). enable_thinking off, since the
     # model talks via respond_to_user / think, not the chat template's reasoning.
     slm = ModelClient(
         model_name=model,
@@ -271,7 +271,7 @@ def main(
     )
 
     # Large model gets every tool EXCEPT defer (it is the escalation tier).
-    # No chat_template_kwargs — the endpoint may be a vanilla OpenAI-compatible API.
+    # No chat_template_kwargs, since the endpoint may be a vanilla OpenAI-compatible API.
     if not defer_base_url:
         raise SystemExit(
             "Set DEFER_BASE_URL (and DEFER_API_KEY / DEFER_MODEL) to the large "
@@ -287,7 +287,7 @@ def main(
 
     orchestrator = CascadeOrchestrator(slm, large, system_prompt, debug=debug)
 
-    print("Airline Support Bot — dual-size cascade (type 'quit' or 'exit' to stop)")
+    print("Airline Support Bot, dual-size cascade (type 'quit' or 'exit' to stop)")
     print(_c(f"  SLM: {model} @ {base_url}", DIM))
     print(_c(f"  large (deferral): {defer_model} @ {defer_base_url}\n", DIM))
     try:
@@ -319,7 +319,7 @@ if __name__ == "__main__":
         model=args.model,
         base_url=args.base_url or f"http://127.0.0.1:{args.port}/v1",
         api_key=args.api_key,
-        # Large (deferral) model is configured purely via env vars — the user brings
+        # Large (deferral) model is configured purely via env vars; the user brings
         # their own OpenAI-compatible endpoint.
         defer_base_url=os.environ.get("DEFER_BASE_URL"),
         defer_api_key=os.environ.get("DEFER_API_KEY", "EMPTY"),

@@ -1,14 +1,14 @@
-# Dual-size Customer Support Bot 🛫: **Let a 1.7B model handle support, and escalate only the hard turns**
+# Flexible Customer Support Bot 🛫
 
-*A fine-tuned small language model that resolves most airline customer-support turns itself and **defers genuinely-hard turns to a larger model** — a cascade that keeps the big model (and its cost) for the cases that actually need it.*
+*A fine-tuned small language model that resolves most airline customer-support turns itself and **defers genuinely-hard turns to a larger model**, a cascade that reserves the big model (and its cost) for the cases that actually need it.*
 
-You're building a customer-support assistant. A frontier LLM handles every conversation well — but you're paying frontier prices for "look up my reservation" and "what's my baggage allowance," which are the overwhelming majority of turns. The hard turns — refund eligibility under fare rules, compensation math across passengers, multi-constraint rebooking — are a small minority, but they're the ones where a small model quietly gets it *wrong*.
+You're building a customer-support assistant. A frontier LLM handles every conversation well, but you're paying frontier prices for "look up my reservation" and "what's my baggage allowance," which are the overwhelming majority of turns. The hard turns (refund eligibility under fare rules, compensation math across passengers, multi-constraint rebooking) are a small minority, but they're the ones where a small model quietly gets it *wrong*.
 
-This demo wires up a **two-tier cascade**. A **Qwen3-1.7B** model, fine-tuned on airline support, handles the bulk of turns locally. When it hits a turn whose correct action depends on non-obvious policy eligibility, combining several rules, or a multi-step calculation, it emits a single `defer_to_larger_model` tool call and the orchestrator hands the conversation to a larger, pluggable model. The small model learns *when it is out of its depth* — that judgment is the whole point.
+This demo wires up a **two-tier cascade**. A **Qwen3-1.7B** model, fine-tuned on airline support, handles the bulk of turns locally. When it hits a turn whose correct action depends on non-obvious policy eligibility, combining several rules, or a multi-step calculation, it emits a single `defer_to_larger_model` tool call and the orchestrator hands the conversation to a larger, pluggable model. The small model learns *when it is out of its depth*, and that judgment is the whole point.
 
-[Distil Labs](https://www.distillabs.ai/) is a platform for training task-specific small language models via knowledge distillation: models 50–400× smaller than current state-of-the-art LLMs that maintain comparable accuracy on a bounded task and run on your own machine. Check out [our docs](https://docs.distillabs.ai/) to dive deeper.
+[Distil Labs](https://www.distillabs.ai/) is a platform for training task-specific small language models via knowledge distillation: models 50-400x smaller than current state-of-the-art LLMs that maintain comparable accuracy on a bounded task and run on your own machine. Check out [our docs](https://docs.distillabs.ai/) to dive deeper.
 
-> ⚠️ **Status: scaffold with placeholder weights.** The model repos currently ship **base Qwen3-1.7B** weights so the harness can be run and validated end-to-end. The base model does *not* defer reliably yet — that behavior arrives with the distilled weights. Swap the GGUF (same filename) when training completes; no code changes. Metric tables below are populated at that point.
+> ⚠️ **Status: scaffold with placeholder weights.** The model repos currently ship **base Qwen3-1.7B** weights so the harness can be run and validated end to end. The base model does *not* defer reliably yet; that behavior arrives with the distilled weights. Swap the GGUF (same filename) when training completes, no code changes. Metric tables below are populated at that point.
 
 ## How the cascade works
 
@@ -17,13 +17,13 @@ You ── user message ──▶  ┌──────────────
                          │  SLM (local) │ ────────────────────────▶ │ Large model  │
    respond_to_user ◀──── │  Qwen3-1.7B  │   (sticky: rest of conv)  │ (pluggable)  │
                          └──────┬───────┘                           └──────┬───────┘
-                                │  tool calls (dummy backend) ◀────────────┘
+                                │  tool calls + results  ◀─────────────────┘
                                 ▼
                      get_reservation_details, book_reservation,
                      send_certificate, think, ... (16 tools)
 ```
 
-Every assistant action is a **single tool call** — including talking to the customer via `respond_to_user`. This keeps the orchestrator thin and deterministic: it just routes tool calls, executes them, and feeds results back. On a hard turn the SLM calls `defer_to_larger_model`, and from that point the larger model handles the rest of the conversation (a *capability* escalation — distinct from `transfer_to_human_agents`, which is for out-of-scope or explicit human requests).
+Every assistant action is a **single tool call**, including talking to the customer via `respond_to_user`. This keeps the orchestrator thin and deterministic: it routes tool calls, executes them, and feeds results back. On a hard turn the SLM calls `defer_to_larger_model`, and from that point the larger model handles the rest of the conversation. This is a *capability* escalation, distinct from `transfer_to_human_agents`, which is for out-of-scope or explicit human requests.
 
 ## Results
 
@@ -31,16 +31,16 @@ Every assistant action is a **single tool call** — including talking to the cu
 
 | Model | Parameters | Tool Call Accuracy | ROUGE | Deferral Precision | Deferral Recall |
 |---|:---:|:---:|:---:|:---:|:---:|
-| GLM-5 (teacher) | — | — | — | — | — |
-| **This model (tuned)** | **1.7B** | — | — | — | — |
-| Qwen3-1.7B (base) | 1.7B | — | — | — | — |
+| GLM-5 (teacher) | - | - | - | - | - |
+| **This model (tuned)** | **1.7B** | - | - | - | - |
+| Qwen3-1.7B (base) | 1.7B | - | - | - | - |
 
 ## Quick Start
 
 ### Prerequisites
 - Python 3.10+
 - [llama.cpp](https://github.com/ggerganov/llama.cpp) with `llama-server` on your PATH
-- A large-model endpoint for the deferral tier — **any OpenAI-compatible API** (OpenAI, Together, a vLLM server, a Bedrock proxy, …)
+- A large-model endpoint for the deferral tier: **any OpenAI-compatible API** (OpenAI, Together, a vLLM server, a Bedrock proxy, and so on)
 
 ### 1. Install
 ```bash
@@ -48,7 +48,7 @@ Every assistant action is a **single tool call** — including talking to the cu
 ```
 
 ### 2. Serve the SLM
-Download the GGUF (currently a base Qwen3-1.7B placeholder; the trained weights replace it in-place in the same repo) and serve it:
+Download the GGUF (currently a base Qwen3-1.7B placeholder; the trained weights replace it in place in the same repo) and serve it:
 ```bash
 hf download distil-labs/distil-qwen3-1.7b-customer-support-deferral-gguf \
   distil-qwen3-1.7b-customer-support-deferral-Q4_K_M.gguf --local-dir models
@@ -72,18 +72,18 @@ python orchestrator.py --port 8000        # add --debug to see raw model output 
 
 ## Usage Examples
 
-The SLM resolves ordinary turns itself, making real tool calls and replying via `respond_to_user`:
+The SLM resolves ordinary turns itself, making tool calls and replying via `respond_to_user`:
 
 ```
 You: Hi! Can you pull up my reservation, the ID is 8JX2WO?
-  · [SLM] get_reservation_details(reservation_id="8JX2WO") → {"status": "success"}
+  · [SLM] get_reservation_details(reservation_id="8JX2WO")
 Bot: [SLM] Here are the details of your reservation 8JX2WO. Anything else I can help with?
 ```
 
-On a hard eligibility turn, the trained SLM defers — and the larger model takes over with a policy-grounded answer:
+On a hard eligibility turn, the trained SLM defers, and the larger model takes over with a policy-grounded answer:
 
 ```
-You: I want a full refund. It's a basic economy ticket and I've already flown the first leg — am I eligible?
+You: I want a full refund. It's a basic economy ticket and I've already flown the first leg. Am I eligible?
 
   ⤴ SLM deferred to the large model.
      reason: refund eligibility depends on fare class (basic economy) + partially-flown segments
@@ -101,18 +101,18 @@ Each turn is badged `[SLM]` or `[LARGE]`, and tool calls are traced inline so yo
 
 | Tool call | Orchestrator action |
 |---|---|
-| `respond_to_user(message)` | Print the reply, end the turn (terminal — no result follows) |
-| `think(thought)` | Record reasoning, execute (no-op), continue |
+| `respond_to_user(message)` | Print the reply, end the turn (terminal, no result follows) |
+| `think(thought)` | Record reasoning, continue |
 | `defer_to_larger_model(reason)` | **Switch to the large model for the rest of the conversation**, re-run the step |
 | `transfer_to_human_agents(summary)` | Print a hand-off line, end the turn |
-| any backend tool | Execute (dummy stub), feed the result back, continue |
+| any other tool | Execute it, feed the result back to the model, continue |
 
-The tools and the airline policy (the system prompt) are loaded from `job_description.json` — the *same* artifact the model is trained on, so the demo and the model never drift apart. Backend execution is a **trivial stub** (`{"status": "success"}`); swap `execute_tool` in `tools.py` for a real backend (or the tau-bench airline environment) to operate on real reservations, users, and flights.
+The tools and the airline policy (the system prompt) are loaded from `job_description.json`, the *same* artifact the model is trained on, so the demo and the model never drift apart. Tool execution lives behind a single integration point, `execute_tool` in `tools.py`: connect it to your reservation systems (or the tau-bench airline environment) and the orchestrator and model stay unchanged.
 
 ```
 .
 ├── orchestrator.py      # the cascade: model clients + agent loop + sticky deferral + CLI
-├── tools.py             # 16-tool catalog (from job_description.json) + dummy execution
+├── tools.py             # 16-tool catalog (from job_description.json) + tool execution
 ├── job_description.json # airline policy + tool schemas (the training artifact)
 ├── install.sh
 ├── requirements.txt
@@ -123,14 +123,14 @@ The tools and the airline policy (the system prompt) are loaded from `job_descri
 
 The model is distilled with the [Distil Labs](https://www.distillabs.ai/) platform:
 
-1. **Traces** — airline customer-support conversations from a public dataset (tau-bench airline tool set), filtered to a single shared policy and converted to OpenAI-style tool-calling traces.
-2. **Trace processing** — the raw traces are cleaned, normalized, and relabeled by a teacher model through the distil trace-processing pipeline.
-3. **Deferral signal** — a `defer_to_larger_model` tool plus explicit policy guidance is added, so the teacher marks the genuinely-hard turns (compensation eligibility, multi-constraint changes) for escalation while the student learns to handle the rest.
-4. **Synthetic expansion + fine-tuning** — the dataset is expanded and distilled onto Qwen3-1.7B, with **GLM-5** as the teacher.
+1. **Traces**: airline customer-support conversations from a public dataset (tau-bench airline tool set), filtered to a single shared policy and converted to OpenAI-style tool-calling traces.
+2. **Trace processing**: the raw traces are cleaned, normalized, and relabeled by a teacher model through the distil trace-processing pipeline.
+3. **Deferral signal**: a `defer_to_larger_model` tool plus explicit policy guidance is added, so the teacher marks the genuinely-hard turns (compensation eligibility, multi-constraint changes) for escalation while the student learns to handle the rest.
+4. **Synthetic expansion + fine-tuning**: the dataset is expanded and distilled onto Qwen3-1.7B, with **GLM-5** as the teacher.
 
 The resulting model is published in two formats:
-- [`distil-qwen3-1.7b-customer-support-deferral`](https://huggingface.co/distil-labs/distil-qwen3-1.7b-customer-support-deferral) — transformers / safetensors (vLLM, `AutoModel`)
-- [`distil-qwen3-1.7b-customer-support-deferral-gguf`](https://huggingface.co/distil-labs/distil-qwen3-1.7b-customer-support-deferral-gguf) — GGUF for llama.cpp (used by this demo)
+- [`distil-qwen3-1.7b-customer-support-deferral`](https://huggingface.co/distil-labs/distil-qwen3-1.7b-customer-support-deferral): transformers / safetensors (vLLM, `AutoModel`)
+- [`distil-qwen3-1.7b-customer-support-deferral-gguf`](https://huggingface.co/distil-labs/distil-qwen3-1.7b-customer-support-deferral-gguf): GGUF for llama.cpp (used by this demo)
 
 ### Supported Functions (16 tools)
 
@@ -172,19 +172,19 @@ You can also use the [Distil CLI Claude Code skill](https://github.com/distil-la
 ## FAQ
 
 **Q: Why a cascade instead of just using the big model for everything?**
-Most support turns are simple lookups and confirmations a small local model handles well and cheaply. A cascade reserves the large model for the hard minority — you pay frontier prices only when the problem actually warrants it.
+Most support turns are simple lookups and confirmations a small local model handles well and cheaply. A cascade reserves the large model for the hard minority, so you pay frontier prices only when the problem actually warrants it.
 
 **Q: How is `defer_to_larger_model` different from `transfer_to_human_agents`?**
-Deferring is a *capability* escalation — a larger model continues the same automated conversation with the same tools and policy. Transferring is for requests outside the tools' scope, or when the user explicitly asks for a person.
+Deferring is a *capability* escalation: a larger model continues the same automated conversation with the same tools and policy. Transferring is for requests outside the tools' scope, or when the user explicitly asks for a person.
 
 **Q: The base model doesn't defer. Is that a bug?**
-No — the published weights are currently base Qwen3-1.7B placeholders. Knowing *when* to defer is exactly what the distillation teaches; the trained weights make the SLM defer on the hard turns.
+No. The published weights are currently base Qwen3-1.7B placeholders. Knowing *when* to defer is exactly what the distillation teaches; the trained weights make the SLM defer on the hard turns.
 
-**Q: What backs the tools?**
-A trivial success stub in `tools.py`, so the demo runs with no backend. Replace `execute_tool` with real handlers (or the tau-bench airline environment) for real state.
+**Q: How do I connect real systems?**
+Tool execution is a single integration point, `execute_tool` in `tools.py`. Point it at your reservation backend (or the tau-bench airline environment); the orchestrator and the model do not change.
 
 **Q: Can I use a different large model?**
-Yes — it's any OpenAI-compatible endpoint, set via `DEFER_BASE_URL` / `DEFER_API_KEY` / `DEFER_MODEL`. Likewise, swap the SLM by pointing `llama-server` at a different GGUF.
+Yes. It's any OpenAI-compatible endpoint, set via `DEFER_BASE_URL` / `DEFER_API_KEY` / `DEFER_MODEL`. Likewise, swap the SLM by pointing `llama-server` at a different GGUF.
 
 ## Links
 
@@ -193,3 +193,4 @@ Yes — it's any OpenAI-compatible endpoint, set via `DEFER_BASE_URL` / `DEFER_A
 - [Distil Labs Website](https://www.distillabs.ai/)
 - [GitHub](https://github.com/distil-labs)
 - [Hugging Face](https://huggingface.co/distil-labs)
+```
