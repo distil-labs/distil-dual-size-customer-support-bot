@@ -8,7 +8,7 @@ This demo wires up a **two-tier cascade**. A **Qwen3-1.7B** model, fine-tuned on
 
 [Distil Labs](https://www.distillabs.ai/) is a platform for training task-specific small language models via knowledge distillation: models 50-400x smaller than current state-of-the-art LLMs that maintain comparable accuracy on a bounded task and run on your own machine. Check out [our docs](https://docs.distillabs.ai/) to dive deeper.
 
-> ⚠️ **Status: scaffold with placeholder weights.** The model repos currently ship **base Qwen3-1.7B** weights so the harness can be run and validated end to end. The base model does *not* defer reliably yet; that behavior arrives with the distilled weights. Swap the GGUF (same filename) when training completes, no code changes. Metric tables below are populated at that point.
+> **Trained weights available.** The model repos now ship the distilled Qwen3-1.7B (GLM-5 teacher). On the held-out airline test set the tuned 1.7B model edges out its roughly 40x larger teacher on llm-as-a-judge and staged tool calling (see Results), and it defers on the genuinely-hard turns.
 
 ## How the cascade works
 
@@ -27,13 +27,13 @@ Every assistant action is a **single tool call**, including talking to the custo
 
 ## Results
 
-*Populated when training completes.*
+Held-out airline test set. The tuned 1.7B model beats its roughly 40x larger GLM-5 teacher on llm-as-a-judge (0.722 vs 0.697) and staged tool calling (0.707 vs 0.667), and lifts every metric well above the base model.
 
-| Model | Parameters | Tool Call Accuracy | ROUGE | Deferral Precision | Deferral Recall |
+| Model | llm-as-a-judge | llm-judge (ref-free) | staged_tool_call | ROUGE | tool_call_equiv |
 |---|:---:|:---:|:---:|:---:|:---:|
-| GLM-5 (teacher) | - | - | - | - | - |
-| **This model (tuned)** | **1.7B** | - | - | - | - |
-| Qwen3-1.7B (base) | 1.7B | - | - | - | - |
+| GLM-5 teacher (~40x larger) | 0.697 | - | 0.667 | - | - |
+| **Distil Qwen3-1.7B (tuned)** | **0.722** | **0.794** | **0.707** | **0.616** | **0.290** |
+| Qwen3-1.7B (base) | 0.422 | 0.502 | 0.487 | 0.482 | 0.154 |
 
 ## Quick Start
 
@@ -51,9 +51,9 @@ Every assistant action is a **single tool call**, including talking to the custo
 Download the GGUF (currently a base Qwen3-1.7B placeholder; the trained weights replace it in place in the same repo) and serve it:
 ```bash
 hf download distil-labs/distil-qwen3-1.7b-customer-support-deferral-gguf \
-  distil-qwen3-1.7b-customer-support-deferral-Q4_K_M.gguf --local-dir models
+  distil-qwen3-1.7b-customer-support-deferral.gguf --local-dir models
 
-llama-server --model models/distil-qwen3-1.7b-customer-support-deferral-Q4_K_M.gguf \
+llama-server --model models/distil-qwen3-1.7b-customer-support-deferral.gguf \
   --port 8000 --jinja
 ```
 
