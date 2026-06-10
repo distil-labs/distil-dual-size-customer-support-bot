@@ -183,6 +183,12 @@ Tool execution is a single integration point, `execute_tool` in `tools.py`. Poin
 **Q: Can I use a different large model?**
 Yes. It's any OpenAI-compatible endpoint, set via `DEFER_BASE_URL` / `DEFER_API_KEY` / `DEFER_MODEL`. Likewise, swap the SLM by pointing `llama-server` at a different GGUF.
 
+## License
+
+The code in this repository is licensed under **Apache 2.0** (see [`LICENSE`](LICENSE)).
+
+**Data notice:** `blog-reproduction/input/traces.jsonl` is a derivative of [Salesforce/APIGen-MT-5k](https://huggingface.co/datasets/Salesforce/APIGen-MT-5k), which is licensed **CC-BY-NC-4.0 (attribution, non-commercial)**. Those traces inherit that license and are **not** covered by the Apache 2.0 license above: keep the attribution and the non-commercial terms if you reuse them. To avoid shipping non-commercial data, you can delete `traces.jsonl` and regenerate it from the public dataset with the scripts in `blog-reproduction/` (see [`blog-reproduction/README.md`](blog-reproduction/README.md)).
+
 ## Links
 
 - [Transformers model](https://huggingface.co/distil-labs/distil-qwen3-1.7b-customer-support-deferral)
@@ -190,4 +196,3 @@ Yes. It's any OpenAI-compatible endpoint, set via `DEFER_BASE_URL` / `DEFER_API_
 - [Distil Labs Website](https://www.distillabs.ai/)
 - [GitHub](https://github.com/distil-labs)
 - [Hugging Face](https://huggingface.co/distil-labs)
-```

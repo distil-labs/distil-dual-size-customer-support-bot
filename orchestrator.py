@@ -98,7 +98,10 @@ class ModelClient:
         if self.extra_body:
             kwargs["extra_body"] = self.extra_body
 
-        response = self.client.chat.completions.create(**kwargs).choices[0].message
+        try:
+            response = self.client.chat.completions.create(**kwargs).choices[0].message
+        except Exception as e:  # network / auth / server error: degrade gracefully
+            return f"{self.label} model request failed: {e}"
 
         # Path A: proper tool_calls
         if response.tool_calls:
@@ -159,8 +162,11 @@ class CascadeOrchestrator:
             if self.debug:
                 print(_c(f"  [debug:{client.label}] {call}", DIM))
 
-            if isinstance(call, str):  # no valid tool call
-                fallback = "Sorry, I didn't catch that. Could you rephrase?"
+            if isinstance(call, str):  # request failed, or no usable tool call in the response
+                if "model request failed" in call:
+                    fallback = "Sorry, I'm having trouble responding right now. Please try again in a moment."
+                else:
+                    fallback = "Sorry, I didn't catch that. Could you rephrase?"
                 self.history.append({"role": "assistant", "content": fallback})
                 return self._bot_line(client.label, fallback)
 
