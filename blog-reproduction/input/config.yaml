@@ -1,0 +1,27 @@
+# Distil Labs — training-from-traces config for the airline tool-calling + deferral SLM.
+# One config drives all three stages: process-traces -> generate-synthetic-data -> finetune-student.
+base:
+  task: multi-turn-tool-calling-closed-book
+  student_model_name: Qwen3-1.7B          # the small model we train
+  teacher_model_name: zai.glm-5           # teacher: repairs traces, generates data, judges eval
+
+trace_processing:
+  observation_format: openai_messages     # traces are OpenAI chat-format messages
+  relabel: true                           # teacher rewrites/repairs each assistant turn
+                                          # (and inserts defer_to_larger_model on genuinely hard turns)
+  relevance_filtering: false
+  relabelling_committee_models: []        # single teacher, no committee
+  teacher_model_name: zai.glm-5
+  num_traces_as_training_base: 100        # traces used as seeds for synthetic generation
+  num_traces_as_testing_base: 100         # held-out test traces
+  min_generated_examples: 1               # remaining traces become "unstructured" diversity context
+
+synthgen:
+  generation_target: 5000                 # target number of synthetic training examples
+  validation_max_total_length: 100000     # max chars (input+output) per example; airline convos run long
+
+tuning:
+  num_train_epochs: 3                      # LoRA finetune; all other hyperparameters use library defaults
+
+evaluation:
+  llm_as_a_judge_model_name: zai.glm-5     # judge model for the base-vs-tuned evaluation

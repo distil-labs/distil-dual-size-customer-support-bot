@@ -2,8 +2,8 @@
 
 The 16 tools (14 tau-bench airline tools + ``respond_to_user`` +
 ``defer_to_larger_model``) and the airline policy are loaded from
-``job_description.json``, the same artifact used to train the SLM, so the demo
-and the model never drift apart.
+``blog-reproduction/input/job_description.json``, the exact task definition the SLM
+was trained on, so the demo and the model never drift apart.
 
 Tool execution lives behind a single integration point, :func:`execute_tool`. Wire
 it to your backend systems (or the tau-bench airline environment) to operate on
@@ -13,7 +13,7 @@ real state.
 import json
 from pathlib import Path
 
-JOB_DESCRIPTION_PATH = Path(__file__).parent / "job_description.json"
+JOB_DESCRIPTION_PATH = Path(__file__).parent / "blog-reproduction" / "input" / "job_description.json"
 
 # Tools with special control-flow meaning to the orchestrator (not backend calls).
 RESPOND_TOOL = "respond_to_user"

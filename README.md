@@ -107,13 +107,13 @@ Each turn is badged `[SLM]` or `[LARGE]`, and tool calls are traced inline so yo
 | `transfer_to_human_agents(summary)` | Print a hand-off line, end the turn |
 | any other tool | Execute it, feed the result back to the model, continue |
 
-The tools and the airline policy (the system prompt) are loaded from `job_description.json`, the *same* artifact the model is trained on, so the demo and the model never drift apart. Tool execution lives behind a single integration point, `execute_tool` in `tools.py`: connect it to your reservation systems (or the tau-bench airline environment) and the orchestrator and model stay unchanged.
+The tools and the airline policy (the system prompt) are loaded from `blog-reproduction/input/job_description.json`, the *same* artifact the model is trained on, so the demo and the model never drift apart. Tool execution lives behind a single integration point, `execute_tool` in `tools.py`: connect it to your reservation systems (or the tau-bench airline environment) and the orchestrator and model stay unchanged.
 
 ```
 .
-├── orchestrator.py      # the cascade: model clients + agent loop + sticky deferral + CLI
-├── tools.py             # 16-tool catalog (from job_description.json) + tool execution
-├── job_description.json # airline policy + tool schemas (the training artifact)
+├── orchestrator.py       # the cascade: model clients + agent loop + sticky deferral + CLI
+├── tools.py              # 16-tool catalog + tool execution
+├── blog-reproduction/    # full reproducible training pipeline (traces, job description, scripts, CLI)
 ├── install.sh
 ├── requirements.txt
 └── README.md
@@ -121,12 +121,21 @@ The tools and the airline policy (the system prompt) are loaded from `job_descri
 
 ## How We Built the Model
 
+A complete, runnable reproduction lives in [`blog-reproduction/`](blog-reproduction/): the exact pipeline input (`input/traces.jsonl`, `input/job_description.json`, `input/config.yaml`), the scripts that built the traces, and the full CLI to train to completion. See [`blog-reproduction/README.md`](blog-reproduction/README.md) for provenance, licensing, and the three-stage commands.
+
 The model is distilled with the [Distil Labs](https://www.distillabs.ai/) platform:
 
-1. **Traces**: airline customer-support conversations from a public dataset (tau-bench airline tool set), filtered to a single shared policy and converted to OpenAI-style tool-calling traces.
-2. **Trace processing**: the raw traces are cleaned, normalized, and relabeled by a teacher model through the distil trace-processing pipeline.
-3. **Deferral signal**: a `defer_to_larger_model` tool plus explicit policy guidance is added, so the teacher marks the genuinely-hard turns (compensation eligibility, multi-constraint changes) for escalation while the student learns to handle the rest.
-4. **Synthetic expansion + fine-tuning**: the dataset is expanded and distilled onto Qwen3-1.7B, with **GLM-5** as the teacher.
+1. **Traces**: airline customer-support conversations from [APIGen-MT-5k](https://huggingface.co/datasets/Salesforce/APIGen-MT-5k) (airline domain), converted to OpenAI tool-calling traces with realistic production noise injected (`blog-reproduction/scripts/`).
+2. **Trace processing**: a teacher (GLM-5) repairs and cleans each trace and inserts `defer_to_larger_model` on the genuinely-hard turns (compensation eligibility, multi-constraint changes), which land on roughly 3% of assistant turns.
+3. **Synthetic expansion**: the teacher expands the seed traces into about 5,000 validated examples.
+4. **Fine-tuning**: distilled onto Qwen3-1.7B (LoRA), then evaluated base vs tuned.
+
+Reproduce it end to end from `blog-reproduction/`:
+```bash
+uv run process-traces          --input-dir input        --output-dir 1-processed
+uv run generate-synthetic-data --input-dir 1-processed  --output-dir 2-synthetic
+uv run finetune-student        --input-dir 2-synthetic  --output-dir 3-model
+```
 
 The resulting model is published in two formats:
 - [`distil-qwen3-1.7b-customer-support-deferral`](https://huggingface.co/distil-labs/distil-qwen3-1.7b-customer-support-deferral): transformers / safetensors (vLLM, `AutoModel`)
@@ -162,7 +171,7 @@ curl -fsSL https://cli-assets.distillabs.ai/install.sh | sh
 distil login
 
 distil model create my-support-deferral
-distil model upload-data <model-id> --data ./data    # job_description.json + traces
+distil model upload-data <model-id> --data ./data    # your job_description.json + traces (see blog-reproduction/input for the format)
 distil model run-training <model-id>
 distil model download <model-id>
 ```
