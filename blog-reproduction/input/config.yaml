@@ -1,5 +1,6 @@
-# Distil Labs — training-from-traces config for the airline tool-calling + deferral SLM.
-# One config drives all three stages: process-traces -> generate-synthetic-data -> finetune-student.
+# Distil Labs training-from-traces config for the airline tool-calling + deferral SLM.
+# One config drives both CLI steps: upload-traces (trace processing) and run-training
+# (teacher eval -> synthetic data generation -> finetune student).
 base:
   task: multi-turn-tool-calling-closed-book
   student_model_name: Qwen3-1.7B          # the small model we train

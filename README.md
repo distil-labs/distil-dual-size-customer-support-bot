@@ -123,7 +123,7 @@ The tools and the airline policy (the system prompt) are loaded from `blog-repro
 
 The model is distilled with the [Distil Labs](https://www.distillabs.ai/) platform: real airline-support traces ([APIGen-MT-5k](https://huggingface.co/datasets/Salesforce/APIGen-MT-5k), airline domain) are repaired and cleaned by a teacher (GLM-5), which also inserts `defer_to_larger_model` on the genuinely-hard turns (roughly 3% of assistant turns); the seed set is then expanded into about 5,000 synthetic examples and distilled onto Qwen3-1.7B.
 
-**A complete, runnable reproduction lives in [`blog-reproduction/`](blog-reproduction/README.md)**: the exact pipeline input, the scripts that built the traces, provenance and licensing, prerequisites, and the full three-stage CLI to train to completion.
+**A complete, runnable reproduction lives in [`blog-reproduction/`](blog-reproduction/README.md)**: the exact pipeline input, the scripts that built the traces, provenance and licensing, and the full Distil Labs CLI commands to train to completion.
 
 The resulting model is published in two formats:
 - [`distil-qwen3-1.7b-customer-support-deferral`](https://huggingface.co/distil-labs/distil-qwen3-1.7b-customer-support-deferral): transformers / safetensors (vLLM, `AutoModel`)

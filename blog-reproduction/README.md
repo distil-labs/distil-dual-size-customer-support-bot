@@ -41,68 +41,74 @@ assistant calls tools (search flights, book/cancel/update reservations, etc.).
 `input/traces.jsonl` is the output of three small, independent steps (all in `scripts/`):
 
 1. **Carve & convert** (`apigen_single_task.py`): filter APIGen-MT-5k to airline, convert
-   ShareGPT → OpenAI `messages`. Every assistant turn is exactly **one tool call** (free-text
-   replies are wrapped as `respond_to_user(message)`), so the task is uniformly tool-calling.
-   Also emits `job_description.json` (task description + the airline tool schemas).
+   ShareGPT → OpenAI `messages`. Also emits `job_description.json` (task description + the airline tool schemas).
 
-2. **Corrupt** (`corrupt_traces.py`): inject realistic production noise so the teacher has
-   something to repair. Three orthogonal corruptions, each applied independently to a fraction
-   of traces: **random truncation**, **argument mutation**, and **schema drift**.
+2. **Corrupt** (`corrupt_traces.py`): inject realistic production noise. Three orthogonal corruptions, each applied independently to a fraction of traces: **random truncation**, **argument mutation**, and **schema drift**.
 
 3. **Add deferral** (`prepare_deferral_inputs.py`): data-only change to
    `job_description.json`: add a 16th tool, **`defer_to_larger_model`**, plus a guideline that
    frames deferral in **absolute terms of task complexity** (defer when a turn is genuinely
-   hard, *not* whenever a particular tool is involved). The teacher inserts deferral during
-   trace processing; it lands on **~3% of assistant turns**, a deliberately small fraction.
+   hard, *not* whenever a particular tool is involved). 
 
 The result in `input/`: **1,587 traces**, a **16-tool** job description, and a `config.yaml`
 that drives the whole pipeline.
 
 ## (c) Train the model to completion
 
-**Prerequisites**
+Reproduce the model with the [Distil Labs CLI](https://docs.distillabs.ai/). The `input/`
+directory already holds everything `upload-traces` needs: `traces.jsonl`,
+`job_description.json`, and `config.yaml`. The config pins the student (`Qwen3-1.7B`),
+the teacher (`zai.glm-5`), the trace-processing settings, the 5,000-example synthgen
+target, and 3 LoRA epochs, so the commands below carry no extra flags.
+
+**Install and authenticate**
 
 ```bash
-uv sync --extra full --extra dev        # torch/transformers/peft + CLI entrypoints
-# Teacher access (GLM-5 via AWS Bedrock by default). Any supported tool-calling teacher works.
-export DISTIL_LIB_LLM_PROVIDER=bedrock   # or: vertex_ai | together_ai
-# ...plus that provider's credentials. A GPU is required for stage 3.
+curl -fsSL https://cli-assets.distillabs.ai/install.sh | sh
+distil update      # the platform evolves quickly
+distil login
 ```
 
-**Three stages**: each stage's output directory is the next stage's input:
+**Create the model** (note the model ID it prints; use it as `<model-id>` below):
 
 ```bash
-# 1) Trace processing: repair/clean traces, insert deferral on hard turns,
-#    split into train (100) / test (100) / unstructured (rest), and score the originals.
-uv run process-traces          --input-dir input        --output-dir 1-processed
-
-# 2) Synthetic data generation: the teacher (GLM-5) expands the 100 seed traces
-#    into ~5,000 validated synthetic examples (final-synthetic-dataset/).
-uv run generate-synthetic-data --input-dir 1-processed  --output-dir 2-synthetic
-
-# 3) Finetune the student (Qwen3-1.7B, LoRA, 3 epochs) and evaluate base vs. tuned.
-uv run finetune-student        --input-dir 2-synthetic  --output-dir 3-model
+distil model create airline-support-deferral
 ```
 
-Add `--dryrun` to any stage for a fast, no-teacher smoke test of the wiring first.
+**Upload and process the traces.** This runs the trace-processing pipeline: relevance
+filtering, committee relabelling (which repairs each turn and inserts
+`defer_to_larger_model` on genuinely hard turns), and the train / test / unstructured
+split. The original model is also scored on the generated test set as a baseline.
 
-**What you get** in `3-model/`:
-
-```
-3-model/
-├── model/                merged fp16 weights (Qwen3-1.7B + adapter)
-├── model-adapter/        standalone LoRA adapter
-├── model.gguf            quantized build for llama.cpp / Ollama
-├── model_client.py       inference client
-├── README.md             model card
-└── eval/
-    ├── base-model/model-eval/metrics-eval-aggregated.json   # before tuning
-    └── tuned-model/model-eval/metrics-eval-aggregated.json  # after tuning
+```bash
+distil model upload-traces <model-id> --data ./input
+distil model upload-status <model-id>      # poll until JOB_SUCCESS
 ```
 
-> Running on a cluster instead of a laptop? The same three stages map to the Argo tasks
-> `run-trace-processing`, `run-synthetic-data-generation`, and `run-finetune`
-> (or `run-e2e-distillation` to chain synthgen + finetune in one job).
+**(Optional) teacher evaluation** is a feasibility check before the long run:
+
+```bash
+distil model run-teacher-evaluation <model-id>
+distil model teacher-evaluation <model-id> --output json | jq '.aggregateMetrics'
+```
+
+**Train.** Three stages run server-side: evaluate teacher, generate ~5,000 validated
+synthetic examples, then finetune Qwen3-1.7B (LoRA, 3 epochs) and evaluate base vs.
+tuned. This takes several hours.
+
+```bash
+distil model run-training <model-id>
+distil model training <model-id>           # poll until JOB_SUCCESS
+```
+
+**Download and deploy.** `download` gives you the merged fp16 weights, the GGUF build,
+the standalone LoRA adapter, an inference client, and the base-vs-tuned eval metrics.
+
+```bash
+distil model download <model-id>
+distil model deploy local <model-id>
+distil model invoke <model-id>             # prints the command to query your model
+```
 
 ## Results (the run that produced the model)
 
