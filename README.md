@@ -121,21 +121,9 @@ The tools and the airline policy (the system prompt) are loaded from `blog-repro
 
 ## How We Built the Model
 
-A complete, runnable reproduction lives in [`blog-reproduction/`](blog-reproduction/): the exact pipeline input (`input/traces.jsonl`, `input/job_description.json`, `input/config.yaml`), the scripts that built the traces, and the full CLI to train to completion. See [`blog-reproduction/README.md`](blog-reproduction/README.md) for provenance, licensing, and the three-stage commands.
+The model is distilled with the [Distil Labs](https://www.distillabs.ai/) platform: real airline-support traces ([APIGen-MT-5k](https://huggingface.co/datasets/Salesforce/APIGen-MT-5k), airline domain) are repaired and cleaned by a teacher (GLM-5), which also inserts `defer_to_larger_model` on the genuinely-hard turns (roughly 3% of assistant turns); the seed set is then expanded into about 5,000 synthetic examples and distilled onto Qwen3-1.7B.
 
-The model is distilled with the [Distil Labs](https://www.distillabs.ai/) platform:
-
-1. **Traces**: airline customer-support conversations from [APIGen-MT-5k](https://huggingface.co/datasets/Salesforce/APIGen-MT-5k) (airline domain), converted to OpenAI tool-calling traces with realistic production noise injected (`blog-reproduction/scripts/`).
-2. **Trace processing**: a teacher (GLM-5) repairs and cleans each trace and inserts `defer_to_larger_model` on the genuinely-hard turns (compensation eligibility, multi-constraint changes), which land on roughly 3% of assistant turns.
-3. **Synthetic expansion**: the teacher expands the seed traces into about 5,000 validated examples.
-4. **Fine-tuning**: distilled onto Qwen3-1.7B (LoRA), then evaluated base vs tuned.
-
-Reproduce it end to end from `blog-reproduction/`:
-```bash
-uv run process-traces          --input-dir input        --output-dir 1-processed
-uv run generate-synthetic-data --input-dir 1-processed  --output-dir 2-synthetic
-uv run finetune-student        --input-dir 2-synthetic  --output-dir 3-model
-```
+**A complete, runnable reproduction lives in [`blog-reproduction/`](blog-reproduction/README.md)**: the exact pipeline input, the scripts that built the traces, provenance and licensing, prerequisites, and the full three-stage CLI to train to completion.
 
 The resulting model is published in two formats:
 - [`distil-qwen3-1.7b-customer-support-deferral`](https://huggingface.co/distil-labs/distil-qwen3-1.7b-customer-support-deferral): transformers / safetensors (vLLM, `AutoModel`)
