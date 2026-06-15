@@ -8,7 +8,7 @@ This demo wires up a **two-tier cascade**. A **Qwen3-1.7B** model, fine-tuned on
 
 [Distil Labs](https://www.distillabs.ai/) is a platform for training task-specific small language models via knowledge distillation: models 50-400x smaller than current state-of-the-art LLMs that maintain comparable accuracy on a bounded task and run on your own machine. Check out [our docs](https://docs.distillabs.ai/) to dive deeper.
 
-> **Trained weights available.** The model repos now ship the distilled Qwen3-1.7B (GLM-5 teacher). On the held-out airline test set the tuned 1.7B model edges out its roughly 40x larger teacher on llm-as-a-judge and staged tool calling (see Results), and it defers on the genuinely-hard turns.
+> **Trained weights available.** The model repos ship the distilled Qwen3-1.7B (GLM-5 teacher). On a held-out airline support set it reaches **~0.75** quality (vs **0.42** untrained and **0.80** for the frontier teacher) while running ~96% of turns locally and escalating only the hardest ~4% (see Results).
 
 ## How the cascade works
 
@@ -27,13 +27,17 @@ Every assistant action is a **single tool call**, including talking to the custo
 
 ## Results
 
-Held-out airline test set. The tuned 1.7B model beats its roughly 40x larger GLM-5 teacher on llm-as-a-judge (0.722 vs 0.697) and staged tool calling (0.707 vs 0.667), and lifts every metric well above the base model.
+Evaluated on a held-out set of airline customer-support turns, scored by an independent GLM-5 judge (score = fraction of responses rated correct).
 
-| Model | llm-as-a-judge | llm-judge (ref-free) | staged_tool_call | ROUGE | tool_call_equiv |
-|---|:---:|:---:|:---:|:---:|:---:|
-| GLM-5 teacher (~40x larger) | 0.697 | - | 0.667 | - | - |
-| **Distil Qwen3-1.7B (tuned)** | **0.722** | **0.794** | **0.707** | **0.616** | **0.290** |
-| Qwen3-1.7B (base) | 0.422 | 0.502 | 0.487 | 0.482 | 0.154 |
+| System | Quality | Frontier-model calls |
+|---|:---:|:---:|
+| Frontier model alone (GLM-5) | 0.80 | 100% |
+| **Distilled Qwen3-1.7B + escalation (local)** | **~0.75** | **~4%** |
+| Untrained Qwen3-1.7B | 0.42 | 0% |
+
+Fine-tuning lifts the local 1.7B from **0.42 to ~0.75** (closing roughly 85% of the gap to its frontier-scale teacher) while running ~96% of turns locally and escalating only the hardest ~4% to the larger model. **Near-frontier quality, mostly on your own hardware.**
+
+*Score is a reference-free LLM-as-a-judge good/bad rating on held-out turns, not exact-match accuracy. The cascade keeps quality on par with the small model alone while reserving the frontier model as a safety net for the hard minority; it is a cost/safety mechanism, not a quality boost.*
 
 ## Quick Start
 
