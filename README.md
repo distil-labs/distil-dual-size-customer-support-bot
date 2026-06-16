@@ -111,13 +111,13 @@ Each turn is badged `[SLM]` or `[LARGE]`, and tool calls are traced inline so yo
 | `transfer_to_human_agents(summary)` | Print a hand-off line, end the turn |
 | any other tool | Execute it, feed the result back to the model, continue |
 
-The tools and the airline policy (the system prompt) are loaded from `blog-reproduction/input/job_description.json`, the *same* artifact the model is trained on, so the demo and the model never drift apart. Tool execution lives behind a single integration point, `execute_tool` in `tools.py`: connect it to your reservation systems (or the tau-bench airline environment) and the orchestrator and model stay unchanged.
+The tools and the airline policy (the system prompt) are loaded from `slm-data/job_description.json`, the *same* artifact the model is trained on, so the demo and the model never drift apart. Tool execution lives behind a single integration point, `execute_tool` in `tools.py`: connect it to your reservation systems (or the tau-bench airline environment) and the orchestrator and model stay unchanged.
 
 ```
 .
 ├── orchestrator.py       # the cascade: model clients + agent loop + sticky deferral + CLI
 ├── tools.py              # 16-tool catalog + tool execution
-├── blog-reproduction/    # full reproducible training pipeline (traces, job description, scripts, CLI)
+├── slm-data/             # the exact training input (seed traces, job description, config/recipe)
 ├── install.sh
 ├── requirements.txt
 └── README.md
@@ -127,7 +127,7 @@ The tools and the airline policy (the system prompt) are loaded from `blog-repro
 
 The model is distilled with the [Distil Labs](https://www.distillabs.ai/) platform: real airline-support traces ([APIGen-MT-5k](https://huggingface.co/datasets/Salesforce/APIGen-MT-5k), airline domain) are repaired and cleaned by a teacher (GLM-5), which also inserts `defer_to_larger_model` on the genuinely-hard turns (roughly 3% of assistant turns); the seed set is then expanded into about 5,000 synthetic examples and distilled onto Qwen3-1.7B.
 
-**A complete, runnable reproduction lives in [`blog-reproduction/`](blog-reproduction/README.md)**: the exact pipeline input, the scripts that built the traces, provenance and licensing, and the full Distil Labs CLI commands to train to completion.
+**The exact training input the shipped model was built from lives in [`slm-data/`](slm-data/README.md)**: the seed traces, the job description, the config/recipe (the defer-forcing mutation pool that densifies the escalation signal), provenance and licensing, and the commands to reproduce it.
 
 The resulting model is published in two formats:
 - [`distil-qwen3-1.7b-customer-support-deferral`](https://huggingface.co/distil-labs/distil-qwen3-1.7b-customer-support-deferral): transformers / safetensors (vLLM, `AutoModel`)
@@ -163,7 +163,7 @@ curl -fsSL https://cli-assets.distillabs.ai/install.sh | sh
 distil login
 
 distil model create my-support-deferral
-distil model upload-data <model-id> --data ./data    # your job_description.json + traces (see blog-reproduction/input for the format)
+distil model upload-data <model-id> --data ./data    # your job_description.json + traces (see slm-data/ for the format)
 distil model run-training <model-id>
 distil model download <model-id>
 ```
@@ -191,7 +191,7 @@ Yes. It's any OpenAI-compatible endpoint, set via `DEFER_BASE_URL` / `DEFER_API_
 
 The code in this repository is licensed under **Apache 2.0** (see [`LICENSE`](LICENSE)).
 
-**Data notice:** `blog-reproduction/input/traces.jsonl` is a derivative of [Salesforce/APIGen-MT-5k](https://huggingface.co/datasets/Salesforce/APIGen-MT-5k), which is licensed **CC-BY-NC-4.0 (attribution, non-commercial)**. Those traces inherit that license and are **not** covered by the Apache 2.0 license above: keep the attribution and the non-commercial terms if you reuse them. To avoid shipping non-commercial data, you can delete `traces.jsonl` and regenerate it from the public dataset with the scripts in `blog-reproduction/` (see [`blog-reproduction/README.md`](blog-reproduction/README.md)).
+**Data notice:** `slm-data/traces.jsonl` is a derivative of [Salesforce/APIGen-MT-5k](https://huggingface.co/datasets/Salesforce/APIGen-MT-5k), which is licensed **CC-BY-NC-4.0 (attribution, non-commercial)**. Those traces inherit that license and are **not** covered by the Apache 2.0 license above: keep the attribution and the non-commercial terms if you reuse them. To avoid shipping non-commercial data, you can delete `traces.jsonl` and regenerate it from the public dataset (see [`slm-data/README.md`](slm-data/README.md)).
 
 ## Links
 

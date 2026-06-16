@@ -1,0 +1,67 @@
+# iteration-4 reproduction recipe: the single self-contained "uploads object" whose pipeline
+# output best APPROXIMATES the blended dataset used to train the iter-4 deferral SLM.
+#
+# The real iter-4 training set was a blend of TWO synthgen runs (a contrastive run + a pure-defer
+# run) combined to ~74% conversation-level / ~14% turn-level defer. This single config reproduces
+# that DISTRIBUTION in one run by weighting the synthgen mutation topics ~87% defer-forcing with a
+# couple of same-theme hard-negatives for precision. It is an APPROXIMATION, not a byte-exact rebuild.
+#
+# Seed: traces.jsonl = the original 1,587 APIGen-MT airline traces (CC-BY-NC-4.0; non-commercial).
+# One config drives all stages. The e2e template does NOT run trace-processing, so run two steps:
+#   1) DISTIL_LIB_LLM_PROVIDER=together_ai  process-traces       (traces.jsonl -> seed train/test/unstructured)
+#   2) DISTIL_LIB_LLM_PROVIDER=together_ai  run-e2e-distillation (seeds + this config -> synthgen -> finetune)
+# Teacher = GLM-5 on together.ai (zai-org/GLM-5), the teacher chosen from the model comparison.
+
+base:
+  task: multi-turn-tool-calling-closed-book
+  student_model_name: Qwen3-1.7B
+  teacher_model_name: zai.glm-5
+  random_seed: 42
+  llm_num_parallel_requests: 8
+
+trace_processing:
+  observation_format: openai_messages
+  relabel: true                       # teacher repairs each turn AND injects defer_to_larger_model on genuinely-hard turns
+  relevance_filtering: false
+  relabelling_committee_models: []
+  teacher_model_name: zai.glm-5
+  num_traces_as_training_base: 100
+  num_traces_as_testing_base: 100
+  min_generated_examples: 1
+
+synthgen:
+  generation_target: 7000             # ~matches the iter-4 blend size (~3.7k contrastive + ~3.7k pure-defer)
+  generation_iteration_size: 128
+  generation_in_single_call: 2        # fine-grained; avoids bimodal all-or-none defer per call
+  num_positive_exemplars_per_generation: 1   # context-overflow fix: 16 tools x exemplars blows the 202k ctx at default 2
+  num_negative_exemplars_per_generation: 1
+  validation_max_total_length: 100000 # airline convs run long
+  basic_mutators_to_use: []
+  mutation_topics:
+    - # SINGLE pool: TopicsMutatorBlock samples one topic per call. ~87% defer-forcing (13/15)
+      # -> ~74% conv-defer with GLM-5 + 2 same-theme hard-negatives to guard precision.
+      # ----- DEFER, themed (11) -----
+      - "the user raises a hard problem about compensation eligibility and amount, and the assistant calls defer_to_larger_model to escalate it instead of solving it"
+      - "the user raises a hard problem about a multi-passenger fare-difference calculation, and the assistant calls defer_to_larger_model to escalate it instead of solving it"
+      - "the user raises a hard problem about refund eligibility under travel insurance, membership, or fare rules, and the assistant calls defer_to_larger_model to escalate it instead of solving it"
+      - "the user raises a hard problem about a multi-rule or multi-segment reservation modification, and the assistant calls defer_to_larger_model to escalate it instead of solving it"
+      - "the user raises a hard problem about combining several charges or credits, such as a gift card, to compute a payment, and the assistant calls defer_to_larger_model to escalate it instead of solving it"
+      - "the user raises a hard problem about a multi-passenger cabin-upgrade cost, and the assistant calls defer_to_larger_model to escalate it instead of solving it"
+      - "the user raises a hard problem about whether a basic-economy reservation can be modified, and the assistant calls defer_to_larger_model to escalate it instead of solving it"
+      - "the user raises a hard problem about prorating a refund across partially-flown segments, and the assistant calls defer_to_larger_model to escalate it instead of solving it"
+      - "the user raises a hard problem about applying membership-tier benefits to a fee waiver, and the assistant calls defer_to_larger_model to escalate it instead of solving it"
+      - "the user raises a hard problem about whether travel insurance covers a specific cancellation reason, and the assistant calls defer_to_larger_model to escalate it instead of solving it"
+      - "the user raises a hard problem about reconciling conflicting policy rules for a reservation change, and the assistant calls defer_to_larger_model to escalate it instead of solving it"
+      # ----- DEFER, generic forcing (2): overrides the per-tool generation so even routine-looking turns defer -----
+      - "whatever the user requests, it requires complex multi-rule judgment the assistant cannot reliably perform; after at most looking up the user's identity, the assistant calls defer_to_larger_model and does NOT complete the task itself"
+      - "the user asks for something that looks like a routine booking or change but actually hinges on subtle policy interactions; the assistant calls defer_to_larger_model instead of booking, searching, or calculating"
+      # ----- HARD-NEGATIVE (2): SAME themes, clear-cut -> assistant RESOLVES directly, NO defer (guards precision) -----
+      - "the user raises a clear-cut compensation case with obvious eligibility under policy, and the assistant resolves it directly (issuing the certificate) without calling defer_to_larger_model"
+      - "the user asks a single-passenger fare-difference or a membership/insurance coverage question answered directly by the stated policy, and the assistant resolves it directly without calling defer_to_larger_model"
+
+tuning:
+  per_device_train_batch_size: 1      # everything else at library defaults (epochs 4, lora_r 64, lr 5e-5, ...)
+  num_train_epochs: 4
+
+evaluation:
+  llm_as_a_judge_model_name: zai.glm-5
