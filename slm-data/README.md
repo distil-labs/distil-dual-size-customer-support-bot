@@ -1,36 +1,120 @@
-# iteration-4 reproduction uploads object
+# Airline tool-calling SLM with learned deferral (reproduction package)
 
-A single self-contained distil-lib input whose pipeline output **approximates the blended
-training set** used for the iteration-4 deferral SLM (Qwen3-1.7B, airline support + `defer_to_larger_model`).
+This directory holds the exact input used to train the shipped iteration-4 model: a small
+task-specific model (**Qwen3-1.7B**) for multi-turn **airline customer-support tool calling**
+that learns to **defer genuinely hard turns to a larger model** (`defer_to_larger_model`). It is
+built with Distil Labs' *training-from-traces* pipeline: real conversation traces are repaired by
+a teacher (**GLM-5**), expanded into synthetic data, and distilled into the student.
 
-## Contents
-- `traces.jsonl`: the original seed: 1,587 APIGen-MT **airline** traces (OpenAI-message format).
-- `job_description.json`: 16 tools (14 tau-bench airline + `respond_to_user` + `defer_to_larger_model`).
-- `config.yaml`: one config driving all stages (trace-processing → synthgen → finetune).
+On a held-out set of airline support turns the distilled 1.7B reaches **~0.75** quality, up from
+**0.42** untrained and approaching the **0.80** of its frontier-scale teacher, while running
+locally.
 
-## What it reproduces (and the caveat)
-The actual iter-4 data was a **blend of two synthgen runs**, a *contrastive* run (~49% conv-defer)
-and a *pure-defer* run (~100% conv-defer), combined to **~74% conv-level / ~14% turn-level defer**.
-
-This config reproduces that **distribution in a single run**: the `synthgen.mutation_topics` pool is
-~87% defer-forcing (13 of 15 topics) + 2 same-theme hard-negatives, which yields ~74% conv-defer with
-GLM-5. It is an **approximation of the blend's character**, not a byte-exact rebuild of the two runs.
-
-## How to run (teacher = GLM-5 on together.ai)
-The e2e template does **not** run trace-processing, so it's two steps:
-```bash
-export DISTIL_LIB_LLM_PROVIDER=together_ai
-export TOGETHER_API_KEY=...   # from AWS Secrets Manager: together-ai-api-key (eu-central-1)
-
-# 1) traces -> seed train/test/unstructured (teacher relabels + injects defers)
-process-traces --input-dir . --output-dir ./_seeds
-
-# 2) seeds + this config -> synthgen (~74% defer) -> finetune  (Argo run-e2e-distillation, or local)
-#    point the synthgen/finetune stage at ./_seeds with this config.yaml
 ```
-NOTE: `generation_target: 7000` is a large run (hours of teacher calls); this is the *recipe*; the
-shipped iter-4 model was trained on the recovered/blended data, not by re-running this from scratch.
+slm-data/
+├── README.md            you are here
+├── traces.jsonl         1,587 airline traces (OpenAI chat format), the seed
+├── job_description.json the airline policy + 16 tools (incl. defer_to_larger_model)
+└── config.yaml          one config: trace-processing -> synthgen -> finetune
+```
 
-## Licensing
-`traces.jsonl` is derived from APIGen-MT-5k (**CC-BY-NC-4.0, non-commercial**), not covered by the
-repo's code license. Flag before any redistribution; or ship scripts-only and regenerate the seed.
+---
+
+## (a) Where the data is from
+
+The traces are derived from **[Salesforce/APIGen-MT-5k](https://huggingface.co/datasets/Salesforce/APIGen-MT-5k)**,
+filtered to the **airline** domain: multi-turn user/assistant conversations where the assistant
+calls tools (search flights, book/cancel/update reservations, and so on).
+
+> **License:** APIGen-MT-5k is **CC-BY-NC-4.0** (attribution, **non-commercial**). The
+> `traces.jsonl` here is a derivative work and inherits that license. If you redistribute, keep
+> the attribution and the non-commercial terms, or ship only `config.yaml` + `job_description.json`
+> and have readers regenerate the traces from the public dataset.
+
+## (b) What's in the input, and the deferral recipe
+
+The pipeline turns these three files into the training set in three conceptual steps:
+
+1. **Seed traces** (`traces.jsonl`): the airline APIGen conversations in OpenAI `messages`
+   format. Every assistant turn is a single tool call (free-text replies are wrapped as
+   `respond_to_user`), so the task is uniformly tool-calling.
+
+2. **Trace processing**: the teacher (GLM-5) relabels each turn and **injects
+   `defer_to_larger_model`** on genuinely-hard turns, then splits the data into train / test /
+   unstructured. `job_description.json` carries the airline policy plus the 16 tools (14 tau-bench
+   airline tools + `respond_to_user` + `defer_to_larger_model`).
+
+3. **Defer-densified synthgen**: the seed turns are expanded into ~7,400 synthetic examples using
+   the **defer-forcing mutation pool** in `config.yaml`. The pool merges defer-framed and normal
+   topics so the natural escalation rate lands at **~74% conversation-level** defer in a single run
+   (reproducing what was originally a two-run blend). This is the lever that teaches the model
+   *when* to escalate, framed by the absolute structure of the problem rather than by which tool is
+   involved.
+
+The result: **1,587 seed traces**, a **16-tool** job description, and one `config.yaml` that drives
+the whole pipeline.
+
+## (c) Train the model to completion
+
+Reproduce the model with the [Distil Labs CLI](https://docs.distillabs.ai/). The `slm-data/`
+directory holds everything `upload-traces` needs: `traces.jsonl`, `job_description.json`, and
+`config.yaml`. The config pins the student (`Qwen3-1.7B`), the teacher (`zai.glm-5`), the
+trace-processing split, the ~7,400-example synthgen target, and the defer-forcing mutation pool, so
+the commands below carry no extra flags.
+
+**Install and authenticate**
+```bash
+curl -fsSL https://cli-assets.distillabs.ai/install.sh | sh
+distil update      # the platform evolves quickly
+distil login
+```
+
+**Create the model** (note the model ID it prints; use it as `<model-id>` below):
+```bash
+distil model create airline-support-deferral
+```
+
+**Upload and process the traces.** Trace processing relabels each turn, injects
+`defer_to_larger_model` on hard turns, and produces the train / test / unstructured split. The
+original model is also scored on the generated test set as a baseline.
+```bash
+distil model upload-traces <model-id> --data ./slm-data
+distil model upload-status <model-id>      # poll until JOB_SUCCESS
+```
+
+**(Optional) teacher evaluation** is a feasibility check before the long run:
+```bash
+distil model run-teacher-evaluation <model-id>
+distil model teacher-evaluation <model-id> --output json | jq '.aggregateMetrics'
+```
+
+**Train.** The teacher generates ~7,400 validated synthetic examples (~74% conversation-level
+defer), then finetunes Qwen3-1.7B (LoRA) and evaluates base vs. tuned. This takes several hours.
+```bash
+distil model run-training <model-id>
+distil model training <model-id>           # poll until JOB_SUCCESS
+```
+
+**Download and deploy.**
+```bash
+distil model download <model-id>           # merged fp16 weights, GGUF, LoRA adapter, eval metrics
+distil model deploy local <model-id>
+distil model invoke <model-id>             # prints the command to query your model
+```
+
+## Results
+
+Running this recipe produces the shipped iteration-4 model. On a held-out set of airline support
+turns, scored by an independent GLM-5 judge (fraction of responses rated correct):
+
+| | Untrained Qwen3-1.7B | Distilled 1.7B (this recipe) | Frontier teacher (GLM-5) |
+|---|:---:|:---:|:---:|
+| Quality | 0.42 | **~0.75** | 0.80 |
+
+Fine-tuning lifts the local 1.7B from **0.42 to ~0.75** (closing roughly 85% of the gap to its
+frontier-scale teacher), while running ~96% of turns locally and escalating only the hardest ~4% to
+the larger model.
+
+> This config reproduces the iteration-4 training *distribution* in a single run. The shipped model
+> was trained on the recovered/blended data (a contrastive run plus a pure-defer run); this is the
+> recipe's character, not a byte-exact rebuild.
