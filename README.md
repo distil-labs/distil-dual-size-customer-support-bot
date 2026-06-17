@@ -8,7 +8,7 @@ This demo wires up a **two-tier cascade**. A **Qwen3-1.7B** model, fine-tuned on
 
 [Distil Labs](https://www.distillabs.ai/) is a platform for training task-specific small language models via knowledge distillation: models 50-400x smaller than current state-of-the-art LLMs that maintain comparable accuracy on a bounded task and run on your own machine. Check out [our docs](https://docs.distillabs.ai/) to dive deeper.
 
-> **Trained weights available.** The model repos ship the distilled Qwen3-1.7B (GLM-5 teacher). On a held-out airline support set it reaches **~0.75** quality (vs **0.42** untrained and **0.80** for the frontier teacher) while running ~96% of turns locally and escalating only the hardest ~4% (see Results).
+> **Trained weights available.** The model repos ship the distilled Qwen3-1.7B (GLM-5 teacher). On held-out airline support the full local-first system matches the frontier model **within noise** (**0.76 ± 0.03** vs **0.79 ± 0.02**, difference not statistically significant) while running ~96% of turns locally and escalating only ~4% to the frontier model (see Results).
 
 ## How the cascade works
 
@@ -27,17 +27,16 @@ Every assistant action is a **single tool call**, including talking to the custo
 
 ## Results
 
-Evaluated on a held-out set of airline customer-support turns, scored by an independent GLM-5 judge (score = fraction of responses rated correct).
+Held-out airline support turns, scored by an independent GLM-5 judge (fraction of responses rated correct). On a **matched per-turn evaluation** (same turns, same judge pass), the full local-first system (the SLM handles most turns and escalates the hardest ~4% to the frontier model) is compared head to head with the frontier model handling every turn:
 
-| System | Quality | Frontier-model calls |
-|---|:---:|:---:|
-| Frontier model alone (GLM-5) | 0.80 | 100% |
-| **Distilled Qwen3-1.7B + escalation (local)** | **~0.75** | **~4%** |
-| Untrained Qwen3-1.7B | 0.42 | 0% |
+| System | Quality (strict judge) | Quality (relaxed judge) | Frontier-model calls |
+|---|:---:|:---:|:---:|
+| Frontier model only (GLM-5) | 0.79 ± 0.02 | 0.88 ± 0.02 | 100% |
+| **Full system (SLM + escalation, local)** | **0.76 ± 0.03** | **0.85 ± 0.02** | **~4%** |
 
-Fine-tuning lifts the local 1.7B from **0.42 to ~0.75** (closing roughly 85% of the gap to its frontier-scale teacher) while running ~96% of turns locally and escalating only the hardest ~4% to the larger model. **Near-frontier quality, mostly on your own hardware.**
+**The two are within noise.** The quality difference is +0.03 ± 0.03 (strict) and +0.03 ± 0.02 (relaxed); the 95% confidence interval of the difference includes zero, and a paired McNemar test finds it not statistically significant, under both a strict and a relaxed rubric. So the local-first system is **statistically indistinguishable from the frontier model in quality while making ~25x fewer frontier-model calls** (~96% of turns run on the 1.7B locally).
 
-*Score is a reference-free LLM-as-a-judge good/bad rating on held-out turns, not exact-match accuracy. The cascade keeps quality on par with the small model alone while reserving the frontier model as a safety net for the hard minority; it is a cost/safety mechanism, not a quality boost.*
+Fine-tuning is what makes this possible: the untrained Qwen3-1.7B scores just **0.42** on the same set. The score is a reference-free LLM-as-a-judge rating (not exact-match), and these judge metrics carry ~±0.03 run-to-run noise, so differences this small are not meaningful. Escalation is a cost/safety mechanism (reserving the frontier model for the hard minority), not a quality boost.
 
 ## Quick Start
 
