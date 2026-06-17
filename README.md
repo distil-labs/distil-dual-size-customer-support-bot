@@ -31,8 +31,8 @@ Held-out airline support turns, scored by an independent GLM-5 judge (fraction o
 
 | System | Quality (strict judge) | Quality (relaxed judge) | Frontier-model calls |
 |---|:---:|:---:|:---:|
-| Frontier model only (GLM-5) | 0.79 ± 0.02 | 0.88 ± 0.02 | 100% |
-| **Full system (SLM + escalation, local)** | **0.76 ± 0.03** | **0.85 ± 0.02** | **~4%** |
+| Frontier model only (GLM-5) | 0.79 ± 0.03 | 0.88 ± 0.03 | 100% |
+| **Full system (SLM + escalation, local)** | **0.76 ± 0.03** | **0.85 ± 0.03** | **~4%** |
 
 **The two are within noise.** The quality difference is +0.03 ± 0.03 (strict) and +0.03 ± 0.02 (relaxed); the 95% confidence interval of the difference includes zero, and a paired McNemar test finds it not statistically significant, under both a strict and a relaxed rubric. So the local-first system is **statistically indistinguishable from the frontier model in quality while making ~25x fewer frontier-model calls** (~96% of turns run on the 1.7B locally).
 
