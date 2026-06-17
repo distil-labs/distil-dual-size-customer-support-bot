@@ -8,7 +8,7 @@ This demo wires up a **two-tier cascade**. A **Qwen3-1.7B** model, fine-tuned on
 
 [Distil Labs](https://www.distillabs.ai/) is a platform for training task-specific small language models via knowledge distillation: models 50-400x smaller than current state-of-the-art LLMs that maintain comparable accuracy on a bounded task and run on your own machine. Check out [our docs](https://docs.distillabs.ai/) to dive deeper.
 
-> **Trained weights available.** The model repos ship the distilled Qwen3-1.7B (GLM-5 teacher). On held-out airline support the full local-first system matches the frontier model **within noise** (**0.76 ± 0.03** vs **0.79 ± 0.02**, difference not statistically significant) while running ~96% of turns locally and escalating only ~4% to the frontier model (see Results).
+> **Trained weights available.** The model repos ship the distilled Qwen3-1.7B (GLM-5 teacher). On held-out airline support the full local-first system matches the frontier model **within noise** (**0.76 ± 0.03** vs **0.79 ± 0.03**, difference not statistically significant) while running ~96% of turns locally and escalating only ~4% to the frontier model (see Results).
 
 ## How the cascade works
 
@@ -34,7 +34,7 @@ Held-out airline support turns, scored by an independent GLM-5 judge (fraction o
 | Frontier model only (GLM-5) | 0.79 ± 0.03 | 0.88 ± 0.03 | 100% |
 | **Full system (SLM + escalation, local)** | **0.76 ± 0.03** | **0.85 ± 0.03** | **~4%** |
 
-**The two are within noise.** The quality difference is +0.03 ± 0.03 (strict) and +0.03 ± 0.02 (relaxed); the 95% confidence interval of the difference includes zero, and a paired McNemar test finds it not statistically significant, under both a strict and a relaxed rubric. So the local-first system is **statistically indistinguishable from the frontier model in quality while making ~25x fewer frontier-model calls** (~96% of turns run on the 1.7B locally).
+**The two are within noise.** The quality difference is +0.03 ± 0.03 (strict) and +0.03 ± 0.03 (relaxed); the 95% confidence interval of the difference includes zero, and a paired McNemar test finds it not statistically significant, under both a strict and a relaxed rubric. So the local-first system is **statistically indistinguishable from the frontier model in quality while making ~25x fewer frontier-model calls** (~96% of turns run on the 1.7B locally).
 
 Fine-tuning is what makes this possible: the untrained Qwen3-1.7B scores just **0.42** on the same set. The score is a reference-free LLM-as-a-judge rating (not exact-match), and these judge metrics carry ~±0.03 run-to-run noise, so differences this small are not meaningful. Escalation is a cost/safety mechanism (reserving the frontier model for the hard minority), not a quality boost.
 
