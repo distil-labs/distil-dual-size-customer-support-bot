@@ -124,7 +124,7 @@ The tools and the airline policy (the system prompt) are loaded from `slm-data/j
 
 ## How We Built the Model
 
-The model is distilled with the [Distil Labs](https://www.distillabs.ai/) platform: real airline-support traces ([APIGen-MT-5k](https://huggingface.co/datasets/Salesforce/APIGen-MT-5k), airline domain) are repaired and cleaned by a teacher (GLM-5), which also inserts `defer_to_larger_model` on the genuinely-hard turns (roughly 3% of assistant turns); the seed set is then expanded into about 5,000 synthetic examples and distilled onto Qwen3-1.7B.
+The model is distilled with the [Distil Labs](https://www.distillabs.ai/) platform: real airline-support traces ([APIGen-MT-5k](https://huggingface.co/datasets/Salesforce/APIGen-MT-5k), airline domain) are repaired and cleaned by a teacher (GLM-5), which also inserts `defer_to_larger_model` on the genuinely-hard turns; the seed set is then expanded into synthetic training data (with the deferral signal deliberately densified) and distilled onto Qwen3-1.7B. The exact synthgen target and the defer-forcing recipe are pinned in [`slm-data/config.yaml`](slm-data/config.yaml).
 
 **The exact training input the shipped model was built from lives in [`slm-data/`](slm-data/README.md)**: the seed traces, the job description, the config/recipe (the defer-forcing mutation pool that densifies the escalation signal), provenance and licensing, and the commands to reproduce it.
 
